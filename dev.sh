@@ -23,7 +23,7 @@ tmux send-keys "vim clock.py" C-m
 
 # Split pane 1 horizontal by 65%, start nodemon
 tmux splitw -p 5
-tmux send-keys "nodemon clock.py" C-m 
+tmux send-keys "nodemon -x 'clear;python3' clock.py" C-m 
 
 tmux selectp -1 1
 tmux splitw -h -p 50

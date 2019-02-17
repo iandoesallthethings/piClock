@@ -13,11 +13,23 @@ import datetime
 import humanize
 from textwrap3 import wrap
 import pickle
+from itertools import cycle
+
+import board
+import busio
+import adafruit_ds3231
+
+from board import *
 
 
 # Setup
 refreshRate = 0.1 # in seconds
 bouncetime = 100 # in milliseconds
+
+# RTC Setup
+clockSource = 'fake' # or 'rtc'
+# i2c = busio.I2C(SCL,SDA)
+# rtc = adafruit_ds3231.DS3231(i2c)
 
 #GPIO define
 RST_PIN        = 25
@@ -62,22 +74,6 @@ servo = GPIO.PWM(SERVO_PIN, 50) # PWM signal at 50Hz
 servo.start(0)
 # servo.start(3) # Start the servo at 2.5% duty cycle.
 
-def showClock(_):
-    global view
-    view = Clock
-
-def showTimer(_):
-    global view
-    view = Timer
-
-GPIO.add_event_detect(KEY1_PIN, GPIO.RISING, callback=showClock, bouncetime=bouncetime)
-GPIO.add_event_detect(KEY2_PIN, GPIO.RISING, callback=showTimer, bouncetime=bouncetime)
-GPIO.add_event_detect(KEY3_PIN, GPIO.RISING, callback=lambda _: view.toggle(), bouncetime=bouncetime)
-GPIO.add_event_detect(KEY_UP_PIN, GPIO.RISING, callback=lambda _: view.up(), bouncetime=bouncetime)
-GPIO.add_event_detect(KEY_DOWN_PIN, GPIO.RISING, callback=lambda _: view.down(), bouncetime=bouncetime)
-GPIO.add_event_detect(KEY_LEFT_PIN, GPIO.RISING, callback=lambda _: view.left(), bouncetime=bouncetime)
-GPIO.add_event_detect(KEY_RIGHT_PIN, GPIO.RISING, callback=lambda _: view.right(), bouncetime=bouncetime)
-GPIO.add_event_detect(KEY_PRESS_PIN, GPIO.RISING, callback=lambda _: view.click(), bouncetime=bouncetime)
 
 
 # Clear display.
@@ -96,9 +92,16 @@ fontTiny = ImageFont.truetype('Font.ttf', 11)
 bell = Image.open("./bell.bmp").convert("1")
 stopwatch = Image.open("./timer.bmp").convert("1")
 
-# Servo Control
 
 # Helpers
+def getNow():
+    global clockSource
+    if clockSource == 'rtc':
+        return datetime.datetime.fromtimestamp(time.mktime(rtc.datetime)) #rtc time
+    else:
+        return datetime.datetime.now() #system clock
+
+
 def chopMicroseconds(delta):
     return delta - datetime.timedelta(microseconds=delta.microseconds)
 
@@ -150,7 +153,7 @@ class Clock:
     ringInterval = 1 # in seconds
     ringTimer = 0
 
-    def draw():
+    def draw(now):
         draw.text((0,-14), now.strftime("%I:%M"), font = font, fill = 0) # Time
         draw.text((98,16), now.strftime("%P"), font = fontTiny, fill = 0) # AM/PM
         draw.line([(30,40),(98,40)], fill = 0, width = 1) # Line
@@ -176,8 +179,11 @@ class Clock:
         Clock.alarmRinging = False
         Alarm.off()
 
+    def context():
+        print('Context Clicked!')
 
-    def checkAlarm():
+
+    def checkAlarm(now):
         global view
         if now.time().replace(microsecond=0) == Clock.alarmTime and Clock.alarmSet:
             view = Clock
@@ -194,14 +200,14 @@ class Clock:
 
 class Timer:
     duration = datetime.timedelta(minutes = 5)
-    start = datetime.datetime.now()
+    start = getNow()
     running = False
     ringing = False
 
     ringInterval = 2 # in seconds
     ringTimer = 0 # increments by refreshrate
     
-    def draw():
+    def draw(now):
         humanizedTime = humanizeAndWrapTime(Timer.timeRemaining())
         for i, chunk in enumerate(humanizedTime):
             draw.text((10,15 * i), chunk, font = font10, fill = 0)
@@ -216,10 +222,13 @@ class Timer:
         Timer.duration -= datetime.timedelta(minutes = 5)
 
     def toggle():
-        Timer.start = datetime.datetime.now()
+        Timer.start = getNow()
         Timer.running = not Timer.running
         Timer.ringing = False
         Alarm.off()
+
+    def context():
+        print('Context Clicked!')
 
 
     def check():
@@ -247,6 +256,21 @@ class Timer:
             timeRemaining = datetime.timedelta(0)
         return timeRemaining
 
+
+views = cycle([Clock, Timer])
+def changeMode(_):
+    global view, views
+    view = next(views)
+
+GPIO.add_event_detect(KEY1_PIN, GPIO.RISING, callback=changeMode, bouncetime=bouncetime)
+GPIO.add_event_detect(KEY2_PIN, GPIO.RISING, callback=lambda _: view.toggle(), bouncetime=bouncetime)
+GPIO.add_event_detect(KEY3_PIN, GPIO.RISING, callback=lambda _: view.context(), bouncetime=bouncetime)
+GPIO.add_event_detect(KEY_UP_PIN, GPIO.RISING, callback=lambda _: view.up(), bouncetime=bouncetime)
+GPIO.add_event_detect(KEY_DOWN_PIN, GPIO.RISING, callback=lambda _: view.down(), bouncetime=bouncetime)
+GPIO.add_event_detect(KEY_LEFT_PIN, GPIO.RISING, callback=lambda _: view.left(), bouncetime=bouncetime)
+GPIO.add_event_detect(KEY_RIGHT_PIN, GPIO.RISING, callback=lambda _: view.right(), bouncetime=bouncetime)
+GPIO.add_event_detect(KEY_PRESS_PIN, GPIO.RISING, callback=lambda _: view.click(), bouncetime=bouncetime)
+
 def saveSettings():
     with open('settings.txt', 'wb') as f:
         pickle.dump([ Clock.alarmSet, Clock.alarmTime, Timer.duration, Timer.running, Timer.start ], f)
@@ -255,20 +279,24 @@ def loadSettings():
     with open('settings.txt', 'rb') as f:
          Clock.alarmSet, Clock.alarmTime, Timer.duration, Timer.running, Timer.start = pickle.load(f)
 
+
 # Main
 try:
     startTime = time.time()
     view = Clock
     loadSettings()
+
+
     while True:
-        now = datetime.datetime.now()
-                
+        #now = datetime.datetime.now() #system clock
+        now = getNow()
+
         draw.rectangle((0,0,disp.width,disp.height), fill=1) # Clear the frame
         
         if Clock.alarmSet: draw.bitmap((118,0), bell)
         if Timer.running: draw.bitmap((118,15), stopwatch)
 
-        Clock.checkAlarm()
+        Clock.checkAlarm(now)
         if Clock.alarmRinging: Clock.ringAlarm()
 
         Timer.check()
@@ -278,11 +306,19 @@ try:
             saveSettings()
 
         # Display the stuff
-        view.draw()
+        view.draw(now)
 
         # Update the display
         disp.ShowImage(disp.getbuffer(image))
         time.sleep(refreshRate - ((time.time() - startTime) % refreshRate))
+except:
+    print('HERP DERP error')
+    while True:
+        draw.text((0,0), '!!!', font = font, fill = 0) 
+        disp.ShowImage(disp.getbuffer(image))
+        time.sleep(refreshRate - ((time.time() - startTime) % refreshRate))
+
+
 finally:
     print("Cleaning Up")
     servo.stop()
