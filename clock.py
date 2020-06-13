@@ -69,8 +69,12 @@ def setToDerpMode(channel):
     global currentDisplay
     currentDisplay = 'derp'
 
+def toggleAlarm(channel):
+    global alarmSet
+    alarmSet = not alarmSet
+
 GPIO.add_event_detect(KEY1_PIN, GPIO.RISING, callback=setToClockMode)
-GPIO.add_event_detect(KEY2_PIN, GPIO.RISING, callback=setToTimerMode)
+GPIO.add_event_detect(KEY2_PIN, GPIO.RISING, callback=toggleAlarm)
 GPIO.add_event_detect(KEY3_PIN, GPIO.RISING, callback=setToDerpMode)
 
 # Create blank image for drawing.
@@ -83,14 +87,14 @@ font = ImageFont.truetype('Font.ttf', 40)
 font2 = ImageFont.truetype('Font.ttf', 16)
 font10 = ImageFont.truetype('Font.ttf', 13)
 fontTiny = ImageFont.truetype('Font.ttf', 11)
+bell = Image.open("./bell.bmp").convert("1")
 
 def displayClock(time):
     draw.text((0,-14), now.strftime("%I:%M"), font = font, fill = 0)
     draw.text((98,16), now.strftime("%P"), font = fontTiny, fill = 0)
     draw.line([(30,40),(98,40)], fill = 0, width = 1)
     draw.text((0,43), now.strftime("%a %d, %h %Y"), font = font2, fill = 0)
-    draw.text((100,0), now.strftime("🔔"), font = font, fill = 0)
-
+    draw.bitmap((117,0), bell)
 
 # Program Loop
 startTime = time.time()
