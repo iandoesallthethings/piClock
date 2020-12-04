@@ -14,6 +14,10 @@ import humanize
 from textwrap3 import wrap
 
 
+# Setup
+refreshRate = 0.1 # in seconds
+bouncetime = 100 # in milliseconds
+
 #GPIO define
 RST_PIN        = 25
 CS_PIN         = 8
@@ -49,6 +53,24 @@ GPIO.setup(KEY1_PIN,        GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Input with
 GPIO.setup(KEY2_PIN,        GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Input with pull-up
 GPIO.setup(KEY3_PIN,        GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Input with pull-up
 
+def showClock(_):
+    global view
+    view = Clock
+
+def showTimer(_):
+    global view
+    view = Timer
+
+GPIO.add_event_detect(KEY1_PIN, GPIO.RISING, callback=showClock, bouncetime=bouncetime)
+GPIO.add_event_detect(KEY2_PIN, GPIO.RISING, callback=showTimer, bouncetime=bouncetime)
+GPIO.add_event_detect(KEY3_PIN, GPIO.RISING, callback=lambda _: view.toggle(), bouncetime=bouncetime)
+GPIO.add_event_detect(KEY_UP_PIN, GPIO.RISING, callback=lambda _: view.up(), bouncetime=bouncetime)
+GPIO.add_event_detect(KEY_DOWN_PIN, GPIO.RISING, callback=lambda _: view.down(), bouncetime=bouncetime)
+GPIO.add_event_detect(KEY_LEFT_PIN, GPIO.RISING, callback=lambda _: view.left(), bouncetime=bouncetime)
+GPIO.add_event_detect(KEY_RIGHT_PIN, GPIO.RISING, callback=lambda _: view.right(), bouncetime=bouncetime)
+GPIO.add_event_detect(KEY_PRESS_PIN, GPIO.RISING, callback=lambda _: view.click(), bouncetime=bouncetime)
+
+
 # Clear display.
 disp.clear()
 
@@ -66,14 +88,6 @@ bell = Image.open("./bell.bmp").convert("1")
 stopwatch = Image.open("./timer.bmp").convert("1")
 
 # Helpers
-def showClock(_):
-    global view
-    view = Clock
-
-def showTimer(_):
-    global view
-    view = Timer
-
 def chopMicroseconds(delta):
     return delta - datetime.timedelta(microseconds=delta.microseconds)
 
@@ -83,11 +97,24 @@ def humanizeAndWrapTime(delta):
     timeString = wrap(preciseDelta, width = 12)
     return timeString
 
+def addDeltaToTime(time, delta):
+    temp_datetime = datetime.datetime.combine(datetime.date.today(), time)
+    sum = temp_datetime + delta
+    return sum.time()
+
+def subtractDeltaFromTime(time, delta):
+    temp_datetime = datetime.datetime.combine(datetime.date.today(), time)
+    sum = temp_datetime - delta
+    return sum.time()
+
 # Views
 class Clock:
     alarmSet = False
     alarmTime = datetime.time(hour = 15, minute = 27)
     alarmRinging = False
+    editingAlarm = True
+    editDeltas = [datetime.timedelta(hours = 1), datetime.timedelta(minutes = 1)]
+    editing = 0
 
     ringInterval = 1 # in seconds
     ringTimer = 0
@@ -96,24 +123,29 @@ class Clock:
         draw.text((0,-14), now.strftime("%I:%M"), font = font, fill = 0) # Time
         draw.text((98,16), now.strftime("%P"), font = fontTiny, fill = 0) # AM/PM
         draw.line([(30,40),(98,40)], fill = 0, width = 1) # Line
-        #draw.text((0,43), now.strftime("%a %d, %h %Y"), font = font2, fill = 0) # Date
-        draw.text((0,43), Clock.alarmTime.strftime("%I:%M %P"), font = font2, fill = 0) # Date
+        if Clock.editingAlarm: 
+            draw.text((0,43), Clock.alarmTime.strftime("%I:%M %P"), font = font2, fill = 0) # Alarm
+            draw.line([(0 + (Clock.editing * 20),63),(17 + (Clock.editing * 20),63)], fill = 0, width = 1) # Underline
+        else: 
+            draw.text((0,43), now.strftime("%a %d, %h %Y"), font = font2, fill = 0) # Date
+        
 
     def toggle():
         Clock.alarmSet = not Clock.alarmSet
         Clock.alarmRinging = False
 
+    def click():
+        Clock.editingAlarm = not Clock.editingAlarm
     def up():
-        print('clock up')
+        Clock.alarmTime = addDeltaToTime(Clock.alarmTime, Clock.editDeltas[Clock.editing])
     def down():
-        print('clock down')
-    def right():
-        print('clock right')
+        Clock.alarmTime = subtractDeltaFromTime(Clock.alarmTime, Clock.editDeltas[Clock.editing])
     def left():
-        print('clock left')
-
+        Clock.editing = 0
+    def right():
+        Clock.editing = 1
     def checkAlarm():
-        if now.time().replace(microsecond=0) == Clock.alarmTime and Clock.AlarmSet:
+        if now.time().replace(microsecond=0) == Clock.alarmTime and Clock.alarmSet:
             Clock.alarmRinging = True
 
     def ringAlarm():
@@ -121,6 +153,7 @@ class Clock:
         if Clock.ringTimer == 0: print("RING! WAKE UP!") # Ring the actual bell HERE!
         Clock.ringTimer += refreshRate
         if Clock.ringTimer >= Clock.ringInterval: Clock.ringTimer = 0
+
 
 class Timer:
     duration = datetime.timedelta(seconds = 10)
@@ -172,22 +205,12 @@ class Timer:
     def left():
         Timer.duration -= datetime.timedelta(minutes = 5)
 
-# Setup
-refreshRate = 0.1 # in seconds
-bouncetime = 100 # in milliseconds
-view = Clock
 
-GPIO.add_event_detect(KEY1_PIN, GPIO.RISING, callback=showClock, bouncetime=bouncetime)
-GPIO.add_event_detect(KEY2_PIN, GPIO.RISING, callback=showTimer, bouncetime=bouncetime)
-GPIO.add_event_detect(KEY3_PIN, GPIO.RISING, callback=lambda _: view.toggle(), bouncetime=bouncetime)
-GPIO.add_event_detect(KEY_UP_PIN, GPIO.RISING, callback=lambda _: view.up(), bouncetime=bouncetime)
-GPIO.add_event_detect(KEY_DOWN_PIN, GPIO.RISING, callback=lambda _: view.down(), bouncetime=bouncetime)
-GPIO.add_event_detect(KEY_LEFT_PIN, GPIO.RISING, callback=lambda _: view.left(), bouncetime=bouncetime)
-GPIO.add_event_detect(KEY_RIGHT_PIN, GPIO.RISING, callback=lambda _: view.right(), bouncetime=bouncetime)
 
 # Main
 try:
     startTime = time.time()
+    view = Clock
     while True:
         now = datetime.datetime.now()
                 
