@@ -4,11 +4,12 @@ import time
 import config
 import traceback
 import datetime
+import subprocess
+import humanize
+from textwrap3 import wrap
 
 import RPi.GPIO as GPIO
 
-import time
-import subprocess
 
 from PIL import Image
 from PIL import ImageDraw
@@ -51,32 +52,6 @@ GPIO.setup(KEY_PRESS_PIN,   GPIO.IN, pull_up_down=GPIO.PUD_UP) # Input with pull
 GPIO.setup(KEY1_PIN,        GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Input with pull-up
 GPIO.setup(KEY2_PIN,        GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Input with pull-up
 GPIO.setup(KEY3_PIN,        GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Input with pull-up
-
-# App State
-currentDisplay = 'clock'
-alarmSet = True
-
-# Input Handling
-def setToClockMode(channel):
-    global currentDisplay
-    currentDisplay = 'clock'
-
-def setToTimerMode(channel):
-    global currentDisplay
-    currentDisplay = 'timer'
-
-def setToDerpMode(channel):
-    global currentDisplay
-    currentDisplay = 'derp'
-
-def toggleAlarm(channel):
-    global alarmSet
-    alarmSet = not alarmSet
-
-GPIO.add_event_detect(KEY1_PIN, GPIO.RISING, callback=setToClockMode)
-GPIO.add_event_detect(KEY2_PIN, GPIO.RISING, callback=toggleAlarm)
-GPIO.add_event_detect(KEY3_PIN, GPIO.RISING, callback=setToDerpMode)
-
 # Create blank image for drawing.
 # Make sure to create image with mode '1' for 1-bit color.
 image = Image.new('1', (disp.width, disp.height), "WHITE")
@@ -88,30 +63,119 @@ font2 = ImageFont.truetype('Font.ttf', 16)
 font10 = ImageFont.truetype('Font.ttf', 13)
 fontTiny = ImageFont.truetype('Font.ttf', 11)
 bell = Image.open("./bell.bmp").convert("1")
+stopwatch = Image.open("./timer.bmp").convert("1")
+
+# App State
+refreshRate = 0.1 # in seconds
+
+currentDisplay = 'timer'
+alarmSet = True
+timerRunning = True
+timerStart = datetime.datetime.now()
+timer = datetime.timedelta(seconds = 10)
+
+# Input Handling
+def setToClockMode(channel):
+    print("Switching to Clock Mode")
+    global currentDisplay
+    currentDisplay = 'clock'
+
+def setToTimerMode(channel):
+    print("Switching to Timer Mode")
+    global currentDisplay
+    currentDisplay = 'timer'
+
+
+def toggle(channel):
+    if currentDisplay == 'clock':
+        toggleAlarm()
+    elif currentDisplay == 'timer':
+        toggleTimer()
+
+def toggleAlarm():
+    print("Toggling Alarm")
+    global alarmSet
+    alarmSet = not alarmSet
+
+def toggleTimer():
+    global timerRunning, timerStart
+    timerStart = datetime.datetime.now()
+    timerRunning = not timerRunning
+
+def up(channel):
+    global timer
+    timer += datetime.timedelta(minutes = 1)
+def down(channel):
+    global timer
+    timer -= datetime.timedelta(minutes = 1)
+def right(channel):
+    global timer
+    timer += datetime.timedelta(minutes = 5)
+def left(channel):
+    global timer
+    timer -= datetime.timedelta(minutes = 5)
+
+GPIO.add_event_detect(KEY1_PIN, GPIO.RISING, callback=setToClockMode)
+GPIO.add_event_detect(KEY2_PIN, GPIO.RISING, callback=setToTimerMode)
+GPIO.add_event_detect(KEY3_PIN, GPIO.RISING, callback=toggle)
+GPIO.add_event_detect(KEY_UP_PIN, GPIO.RISING, callback=up)
+GPIO.add_event_detect(KEY_DOWN_PIN, GPIO.RISING, callback=down)
+GPIO.add_event_detect(KEY_LEFT_PIN, GPIO.RISING, callback=left)
+GPIO.add_event_detect(KEY_RIGHT_PIN, GPIO.RISING, callback=right)
+
 
 def displayClock(time):
-    draw.text((0,-14), now.strftime("%I:%M"), font = font, fill = 0)
-    draw.text((98,16), now.strftime("%P"), font = fontTiny, fill = 0)
-    draw.line([(30,40),(98,40)], fill = 0, width = 1)
-    draw.text((0,43), now.strftime("%a %d, %h %Y"), font = font2, fill = 0)
-    draw.bitmap((117,0), bell)
+    draw.text((0,-14), now.strftime("%I:%M"), font = font, fill = 0) # Time
+    draw.text((98,16), now.strftime("%P"), font = fontTiny, fill = 0) # AM/PM
+    draw.line([(30,40),(98,40)], fill = 0, width = 1) # Line
+    draw.text((0,43), now.strftime("%a %d, %h %Y"), font = font2, fill = 0) # Date
+
+def displayTimer(now):
+    global timer, timerStart
+    timeRemaining = None
+
+    if timerRunning:
+        timeElapsed = now - timerStart
+        timeRemaining = timer - timeElapsed
+        if timeRemaining <= datetime.timedelta(0):
+            timeRemaining = datetime.timedelta(0)
+    else:
+        timeRemaining = timer
+
+    for i, chunk in enumerate(formatTimerString(timeRemaining)):
+        draw.text((10,15 * i), chunk, font = font10, fill = 0)
+
+def formatTimerString(delta):
+    preciseDelta = humanize.precisedelta(delta, minimum_unit = 'seconds')
+    timeString = wrap(preciseDelta, width = 15)
+    return timeString
+
 
 # Program Loop
-startTime = time.time()
-while True:
-    draw.rectangle((0,0,disp.width,disp.height), fill=1) # Clear the frame
+try:
+    startTime = time.time()
+    while True:
+        draw.rectangle((0,0,disp.width,disp.height), fill=1) # Clear the frame
+        
+        if alarmSet == True:
+            draw.bitmap((118,0), bell)
+        if timerRunning == True:
+            draw.bitmap((118,15), stopwatch)
+            
+        # Update the stuff
+        now = datetime.datetime.now()
 
-    now = datetime.datetime.now()
-    if currentDisplay == 'clock':
-        displayClock(now)
-        time.sleep(1.0 - ((time.time() - startTime) % 1))
-    elif currentDisplay == 'timer':
-        draw.text((10,0), 'This is where the timer goes', font = font10, fill = 0)
-    elif currentDisplay == 'derp':
-        draw.text((10,0), 'DERP', font = font, fill = 0)
+        # Display the stuff
+        if currentDisplay == 'clock':
+            displayClock(now)
+        elif currentDisplay == 'timer':
+            displayTimer(now)
+        elif currentDisplay == 'derp':
+            draw.text((10,0), 'DERP', font = font, fill = 0)
 
-    disp.ShowImage(disp.getbuffer(image))
-    
-# except:
-	# print("except")
-# GPIO.cleanup()
+        # Update the display
+        disp.ShowImage(disp.getbuffer(image))
+        time.sleep(refreshRate - ((time.time() - startTime) % refreshRate))
+finally:
+    print("Cleaning Up")
+    GPIO.cleanup()
