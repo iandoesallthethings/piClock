@@ -12,6 +12,7 @@ import time
 import datetime
 import humanize
 from textwrap3 import wrap
+import pickle
 
 
 # Setup
@@ -110,9 +111,9 @@ def subtractDeltaFromTime(time, delta):
 # Views
 class Clock:
     alarmSet = False
-    alarmTime = datetime.time(hour = 15, minute = 27)
+    alarmTime = datetime.time(hour = 9, minute = 0)
     alarmRinging = False
-    editingAlarm = True
+    editingAlarm = False
     editDeltas = [datetime.timedelta(hours = 1), datetime.timedelta(minutes = 1)]
     editing = 0
 
@@ -144,10 +145,10 @@ class Clock:
         Clock.editing = 0
     def right():
         Clock.editing = 1
+
     def checkAlarm():
         if now.time().replace(microsecond=0) == Clock.alarmTime and Clock.alarmSet:
             Clock.alarmRinging = True
-
     def ringAlarm():
         global refreshRate
         if Clock.ringTimer == 0: print("RING! WAKE UP!") # Ring the actual bell HERE!
@@ -156,7 +157,7 @@ class Clock:
 
 
 class Timer:
-    duration = datetime.timedelta(seconds = 10)
+    duration = datetime.timedelta(minutes = 5)
     start = datetime.datetime.now()
     running = False
     ringing = False
@@ -205,12 +206,19 @@ class Timer:
     def left():
         Timer.duration -= datetime.timedelta(minutes = 5)
 
+def saveSettings():
+    with open('settings.txt', 'wb') as f:
+        pickle.dump([ Clock.alarmSet, Clock.alarmTime, Timer.duration, Timer.running, Timer.start ], f)
 
+def loadSettings():   
+    with open('settings.txt', 'rb') as f:
+         Clock.alarmSet, Clock.alarmTime, Timer.duration, Timer.running, Timer.start = pickle.load(f)
 
 # Main
 try:
     startTime = time.time()
     view = Clock
+    loadSettings()
     while True:
         now = datetime.datetime.now()
                 
@@ -225,6 +233,8 @@ try:
         Timer.check()
         if Timer.ringing: Timer.ring()
 
+        if now.second % 10 == 0 and now.microsecond <= 200000:
+            saveSettings()
 
         # Display the stuff
         view.draw()
