@@ -34,6 +34,9 @@ KEY1_PIN       = 21
 KEY2_PIN       = 20
 KEY3_PIN       = 16
 
+SERVO_PIN      = 17
+
+
 
 # 240x240 display with hardware SPI:
 disp = SH1106.SH1106()
@@ -53,6 +56,10 @@ GPIO.setup(KEY_PRESS_PIN,   GPIO.IN, pull_up_down=GPIO.PUD_UP) # Input with pull
 GPIO.setup(KEY1_PIN,        GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Input with pull-up
 GPIO.setup(KEY2_PIN,        GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Input with pull-up
 GPIO.setup(KEY3_PIN,        GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Input with pull-up
+GPIO.setup(SERVO_PIN, GPIO.OUT) # Output for PWM servo signal
+
+servo = GPIO.PWM(SERVO_PIN, 50) # PWM signal at 50Hz
+# servo.start(2.5) # Start the servo at 2.5% duty cycle.
 
 def showClock(_):
     global view
@@ -244,4 +251,6 @@ try:
         time.sleep(refreshRate - ((time.time() - startTime) % refreshRate))
 finally:
     print("Cleaning Up")
+    servo.stop()
     GPIO.cleanup()
+    print("Done!")
