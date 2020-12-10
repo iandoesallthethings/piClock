@@ -59,7 +59,8 @@ GPIO.setup(KEY3_PIN,        GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Input with
 GPIO.setup(SERVO_PIN, GPIO.OUT) # Output for PWM servo signal
 
 servo = GPIO.PWM(SERVO_PIN, 50) # PWM signal at 50Hz
-# servo.start(2.5) # Start the servo at 2.5% duty cycle.
+servo.start(0)
+# servo.start(3) # Start the servo at 2.5% duty cycle.
 
 def showClock(_):
     global view
@@ -95,6 +96,8 @@ fontTiny = ImageFont.truetype('Font.ttf', 11)
 bell = Image.open("./bell.bmp").convert("1")
 stopwatch = Image.open("./timer.bmp").convert("1")
 
+# Servo Control
+
 # Helpers
 def chopMicroseconds(delta):
     return delta - datetime.timedelta(microseconds=delta.microseconds)
@@ -116,6 +119,26 @@ def subtractDeltaFromTime(time, delta):
     return sum.time()
 
 # Views
+class Alarm:
+    ringing = False
+        
+    def on():
+        global servo
+        Alarm.ringing = True
+        servo.ChangeDutyCycle(2.5)
+    def off():
+        global servo
+        Alarm.ringing = False
+        servo.ChangeDutyCycle(2.5)
+        time.sleep(0.2)
+        servo.ChangeDutyCycle(0)
+    def ringOnce():
+        global servo
+        servo.ChangeDutyCycle(10)
+        time.sleep(0.2)
+        servo.ChangeDutyCycle(2.5)
+
+
 class Clock:
     alarmSet = False
     alarmTime = datetime.time(hour = 9, minute = 0)
@@ -133,14 +156,9 @@ class Clock:
         draw.line([(30,40),(98,40)], fill = 0, width = 1) # Line
         if Clock.editingAlarm: 
             draw.text((0,43), Clock.alarmTime.strftime("%I:%M %P"), font = font2, fill = 0) # Alarm
-            draw.line([(0 + (Clock.editing * 20),63),(17 + (Clock.editing * 20),63)], fill = 0, width = 1) # Underline
+            draw.line([(0 + (Clock.editing * 20),63),(20 + (Clock.editing * 20),63)], fill = 0, width = 1) # Underline
         else: 
             draw.text((0,43), now.strftime("%a %d, %h %Y"), font = font2, fill = 0) # Date
-        
-
-    def toggle():
-        Clock.alarmSet = not Clock.alarmSet
-        Clock.alarmRinging = False
 
     def click():
         Clock.editingAlarm = not Clock.editingAlarm
@@ -153,12 +171,23 @@ class Clock:
     def right():
         Clock.editing = 1
 
+    def toggle():
+        Clock.alarmSet = not Clock.alarmSet
+        Clock.alarmRinging = False
+        Alarm.off()
+
+
     def checkAlarm():
+        global view
         if now.time().replace(microsecond=0) == Clock.alarmTime and Clock.alarmSet:
+            view = Clock
             Clock.alarmRinging = True
+            Alarm.on()
+
     def ringAlarm():
         global refreshRate
-        if Clock.ringTimer == 0: print("RING! WAKE UP!") # Ring the actual bell HERE!
+        if Clock.ringTimer == 0: 
+            Alarm.ringOnce()
         Clock.ringTimer += refreshRate
         if Clock.ringTimer >= Clock.ringInterval: Clock.ringTimer = 0
 
@@ -172,13 +201,37 @@ class Timer:
     ringInterval = 2 # in seconds
     ringTimer = 0 # increments by refreshrate
     
+    def draw():
+        humanizedTime = humanizeAndWrapTime(Timer.timeRemaining())
+        for i, chunk in enumerate(humanizedTime):
+            draw.text((10,15 * i), chunk, font = font10, fill = 0)
+
+    def up():
+        Timer.duration += datetime.timedelta(minutes = 1)
+    def down():
+        Timer.duration -= datetime.timedelta(minutes = 1)
+    def right():
+        Timer.duration += datetime.timedelta(minutes = 5)
+    def left():
+        Timer.duration -= datetime.timedelta(minutes = 5)
+
+    def toggle():
+        Timer.start = datetime.datetime.now()
+        Timer.running = not Timer.running
+        Timer.ringing = False
+        Alarm.off()
+
 
     def check():
-        if Timer.running and Timer.timeRemaining() <= datetime.timedelta(0):
+        global view
+        if Timer.running and Timer.timeRemaining() <= datetime.timedelta(0) and Timer.ringing == False:
             Timer.ringing = True
+            view = Timer
+            Alarm.on()
     def ring():
         global refreshRate
-        if Timer.ringTimer <= 0: print("RING! TIMES UP!") # Ring the actual bell HERE!
+        if Timer.ringTimer <= 0: 
+            Alarm.ringOnce()
         Timer.ringTimer += refreshRate
         if Timer.ringTimer >= Timer.ringInterval: Timer.ringTimer = 0
 
@@ -193,25 +246,6 @@ class Timer:
         if timeRemaining <= datetime.timedelta(0):
             timeRemaining = datetime.timedelta(0)
         return timeRemaining
-    
-    def draw():
-        humanizedTime = humanizeAndWrapTime(Timer.timeRemaining())
-        for i, chunk in enumerate(humanizedTime):
-            draw.text((10,15 * i), chunk, font = font10, fill = 0)
-
-    def toggle():
-        Timer.start = datetime.datetime.now()
-        Timer.running = not Timer.running
-        Timer.ringing = False
-
-    def up():
-        Timer.duration += datetime.timedelta(minutes = 1)
-    def down():
-        Timer.duration -= datetime.timedelta(minutes = 1)
-    def right():
-        Timer.duration += datetime.timedelta(minutes = 5)
-    def left():
-        Timer.duration -= datetime.timedelta(minutes = 5)
 
 def saveSettings():
     with open('settings.txt', 'wb') as f:
@@ -240,7 +274,7 @@ try:
         Timer.check()
         if Timer.ringing: Timer.ring()
 
-        if now.second % 10 == 0 and now.microsecond <= 200000:
+        if now.second % 30 == 0 and now.microsecond <= 200000:
             saveSettings()
 
         # Display the stuff

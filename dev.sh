@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # Setup a work space called `work` with two windows
 # first window has 3 panes. 
@@ -7,6 +7,7 @@
 # pane 3 is set to api root and bash prompt.
 # note: `api` aliased to `cd ~/path/to/work`
 #
+
 session="work"
 
 cd piClock
