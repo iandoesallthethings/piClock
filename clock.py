@@ -34,7 +34,7 @@ KEY1_PIN       = 21
 KEY2_PIN       = 20
 KEY3_PIN       = 16
 
-SERVO_PIN      = 17
+SERVO_PIN      = 4
 
 
 

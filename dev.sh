@@ -8,6 +8,7 @@
 # note: `api` aliased to `cd ~/path/to/work`
 #
 
+sudo systemctl kill start-clock.service
 session="work"
 
 cd piClock
